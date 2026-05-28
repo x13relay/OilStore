@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	dto "OilStore/DTO"
 	"OilStore/models"
 	"OilStore/postgresql"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 )
@@ -20,24 +24,31 @@ func NewHandlers(oilConn *postgresql.OilConn) *Handlers {
 
 func (h *Handlers) AddOil(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Wrong HTTP method!", http.StatusBadRequest)
+		http.Error(w, "Wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
-	var newOil models.Oil
+	var req dto.AddOilReq
 
-	errJson := json.NewDecoder(r.Body).Decode(&newOil)
+	errJson := json.NewDecoder(r.Body).Decode(&req)
 	if errJson != nil {
 		http.Error(w, "Can't read jSon body", http.StatusBadRequest)
 		return
 	}
+	newOil := models.Oil{
+		Name:  req.Name,
+		Visc:  req.Visc,
+		Price: req.Price,
+	}
+
 	id, errDB := h.oilConn.AddOil(r.Context(), newOil)
 	if errDB != nil {
-		http.Error(w, "Fail to write DB", 500)
+		http.Error(w, "Fail to write DB", http.StatusInternalServerError)
 		return
 	}
-	response := map[string]interface{}{
-		"id":      id,
-		"message": "Succes!New Oil created!",
+
+	response := dto.OilMessageResp{
+		Id:      id,
+		Message: "Succes!New Oil created!",
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -46,7 +57,7 @@ func (h *Handlers) AddOil(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) DeleteOilById(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
-		http.Error(w, "Wrong HTTP method!", http.StatusBadRequest)
+		http.Error(w, "Wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -62,39 +73,59 @@ func (h *Handlers) DeleteOilById(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "oil not found"+errBD.Error(), http.StatusNotFound)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusOK)
+	respMess := dto.OilMessageResp{
+		Id:      id,
+		Message: "Oil deleted successfully!",
+	}
+	json.NewEncoder(w).Encode(respMess)
 
 }
 
 func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPatch {
-		http.Error(w, "wrong HTTP method!", http.StatusBadRequest)
+		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
-	var updateOil models.Oil
+	var oilReq dto.FullUpdateOilReq
 
-	idStr := r.PathValue("id")
+	idStr := r.PathValue("id") //парсим айди
 	id, errId := strconv.Atoi(idStr)
 	if errId != nil {
 		http.Error(w, "incorrect ID value!", http.StatusBadRequest)
 		return
 	}
 
-	errJson := json.NewDecoder(r.Body).Decode(&updateOil)
+	errJson := json.NewDecoder(r.Body).Decode(&oilReq)
 	if errJson != nil {
 		http.Error(w, "Can't read jSon body"+errJson.Error(), http.StatusBadRequest)
 		return
 	}
 
+	updateOil := models.Oil{
+		Name:  oilReq.Name,
+		Visc:  oilReq.Visc,
+		Price: oilReq.Price,
+	}
 	updOil, errBD := h.oilConn.FullUpdateOil(r.Context(), updateOil, id)
 	if errBD != nil {
-		http.Error(w, "Database write error: oil data not updated!"+errBD.Error(), http.StatusInternalServerError)
-		return
+		if errors.Is(errBD, sql.ErrNoRows) {
+			http.Error(w, "oil not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Database write error: oil data not updated!"+errBD.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
+	oilResp := dto.OilResp{
+		Id:    updOil.Id,
+		Name:  updOil.Name,
+		Visc:  updOil.Visc,
+		Price: updOil.Price,
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	errJREQ := json.NewEncoder(w).Encode(updOil)
+	errJREQ := json.NewEncoder(w).Encode(oilResp)
 	if errJREQ != nil {
 		http.Error(w, "response error"+errJREQ.Error(), http.StatusInternalServerError)
 		return
@@ -104,7 +135,7 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "wrong HTTP method!", http.StatusBadRequest)
+		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -136,9 +167,69 @@ func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	oilRespList := dto.OilRespList{
+		Data:  make([]dto.OilResp, len(oils)),
+		Count: len(oils),
+	}
+
+	for i, oil := range oils {
+		oilRespList.Data[i] = dto.OilResp{
+			Id:    oil.Id,
+			Name:  oil.Name,
+			Visc:  oil.Visc,
+			Price: oil.Price,
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(oils)
 	w.WriteHeader(http.StatusOK)
+	if errJsonEnc := json.NewEncoder(w).Encode(oilRespList); errJsonEnc != nil {
+		fmt.Println("Failed to encode response:", errJsonEnc)
+	}
+
+}
+
+func (h *Handlers) GetByVisc(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
+		return
+	}
+
+	query := r.URL.Query()
+
+	visc := query.Get("visc")
+	if visc == "" {
+		http.Error(w, "empty viscosity!", http.StatusBadRequest)
+		return
+	}
+
+	sortOil, err := h.oilConn.GetByVisc(r.Context(), visc)
+	if err != nil {
+		http.Error(w, "oil not found!", http.StatusInternalServerError)
+		return
+	}
+
+	oilListResp := dto.OilRespList{
+		Data:  make([]dto.OilResp, len(sortOil)),
+		Count: len(sortOil),
+	}
+
+	for i, oil := range sortOil {
+		oilListResp.Data[i] = dto.OilResp{
+			Id:    oil.Id,
+			Name:  oil.Name,
+			Visc:  oil.Visc,
+			Price: oil.Price,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if errJson := json.NewEncoder(w).Encode(oilListResp); errJson != nil {
+		http.Error(w, "Failed to encode response data", http.StatusInternalServerError)
+		fmt.Println("Failed to encode response data")
+		return
+	}
 
 }

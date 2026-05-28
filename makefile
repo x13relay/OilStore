@@ -9,7 +9,7 @@ oilstore_stop:
 	docker compose down oilstore
 all_stop:
 	docker copmose down
-bd_start:
+db_start:
 	docker run -d --name postgres-dev \
 	  -e POSTGRES_USER=${POSTGRES_USER} \
 	  -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
@@ -17,6 +17,6 @@ bd_start:
 	  -p 5432:5432 \
 	  -v httpgohandlers-postgresql_postgres_data:/var/lib/postgresql/data \
 	  postgres:17-alpine
-bd_stop:
+db_stop:
 	docker stop postgres-dev || true
 	docker rm postgres-dev || true

@@ -26,9 +26,10 @@ func main() {
 	}
 	fmt.Println("БД готова. Сервер запущен. Жду запросы на :8080")
 	mux.HandleFunc("POST /oils", handlers.AddOil)
-	mux.HandleFunc("DELETE /del/{id}", handlers.DeleteOilById)
+	mux.HandleFunc("DELETE /oils/{id}", handlers.DeleteOilById)
 	mux.HandleFunc("PATCH /oils/{id}", handlers.FullUpdateOil)
 	mux.HandleFunc("GET /oils", handlers.GetMinMaxOil)
+	mux.HandleFunc("GET /oils/visc", handlers.GetByVisc)
 
 	errServer := http.ListenAndServe(":8080", mux)
 	if errServer != nil {

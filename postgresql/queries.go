@@ -62,3 +62,15 @@ func (oc *OilConn) GetMinMaxOil(ctx context.Context, min, max int) ([]models.Oil
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByName[models.Oil])
 }
+
+func (oc *OilConn) GetByVisc(ctx context.Context, visc string) ([]models.Oil, error) {
+	sQL := `SELECT id,name,visc,price
+	FROM oils 
+	WHERE REPLACE
+	(LOWER(visc), '-', '') = REPLACE(LOWER($1), '-', '')`
+	rows, err := oc.conn.Query(ctx, sQL, visc)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByName[models.Oil])
+}
