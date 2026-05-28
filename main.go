@@ -15,6 +15,7 @@ func main() {
 		fmt.Println("Ошибка подключения к БД", errCon)
 		return
 	}
+	defer conn.Close(ctx)
 	oilConn := postgresql.NewOilConn(conn)
 	handlers := handlers.NewHandlers(oilConn)
 	mux := http.NewServeMux()
