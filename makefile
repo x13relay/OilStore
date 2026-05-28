@@ -1,3 +1,6 @@
+include .env
+export
+
 test_run:
 	go run main.go
 oilstore_start:
