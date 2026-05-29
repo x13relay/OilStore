@@ -2,6 +2,7 @@ package main
 
 import (
 	"OilStore/repository"
+	"OilStore/service"
 	"OilStore/transport"
 	"context"
 	"fmt"
@@ -17,12 +18,12 @@ func main() {
 	}
 	defer conn.Close(ctx)
 
-	oilConn := repository.NewOilConn(conn)
-
-	handlers := transport.NewHandlers(oilConn)
+	oilRepo := repository.NewOilConn(conn)
+	oilServ := service.NewOilService(oilRepo)
+	handlers := transport.NewHandlers(oilServ)
 
 	mux := http.NewServeMux()
-	errBD := oilConn.CreateTableOils(ctx)
+	errBD := oilRepo.CreateTableOils(ctx)
 	if errBD != nil {
 		fmt.Println("Ошибка при создании таблицы в БД", errBD)
 		return
