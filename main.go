@@ -1,8 +1,8 @@
 package main
 
 import (
-	"OilStore/handlers"
-	"OilStore/postgresql"
+	"OilStore/repository"
+	"OilStore/transport"
 	"context"
 	"fmt"
 	"net/http"
@@ -10,14 +10,17 @@ import (
 
 func main() {
 	ctx := context.Background()
-	conn, errCon := postgresql.ConnectionBD_oil(ctx)
+	conn, errCon := repository.ConnectionBD_oil(ctx)
 	if errCon != nil {
 		fmt.Println("Ошибка подключения к БД", errCon)
 		return
 	}
 	defer conn.Close(ctx)
-	oilConn := postgresql.NewOilConn(conn)
-	handlers := handlers.NewHandlers(oilConn)
+
+	oilConn := repository.NewOilConn(conn)
+
+	handlers := transport.NewHandlers(oilConn)
+
 	mux := http.NewServeMux()
 	errBD := oilConn.CreateTableOils(ctx)
 	if errBD != nil {

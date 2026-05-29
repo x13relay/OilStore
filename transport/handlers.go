@@ -1,9 +1,9 @@
-package handlers
+package transport
 
 import (
 	dto "OilStore/DTO"
 	"OilStore/models"
-	"OilStore/postgresql"
+	"OilStore/repository"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -13,12 +13,12 @@ import (
 )
 
 type Handlers struct {
-	oilConn *postgresql.OilConn
+	storage repository.OilStorage
 }
 
-func NewHandlers(oilConn *postgresql.OilConn) *Handlers {
+func NewHandlers(storage repository.OilStorage) *Handlers {
 	return &Handlers{
-		oilConn: oilConn,
+		storage: storage,
 	}
 }
 
@@ -40,7 +40,7 @@ func (h *Handlers) AddOil(w http.ResponseWriter, r *http.Request) {
 		Price: req.Price,
 	}
 
-	id, errDB := h.oilConn.AddOil(r.Context(), newOil)
+	id, errDB := h.storage.AddOil(r.Context(), newOil)
 	if errDB != nil {
 		http.Error(w, "Fail to write DB", http.StatusInternalServerError)
 		return
@@ -68,7 +68,7 @@ func (h *Handlers) DeleteOilById(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "incorrect ID value!", http.StatusBadRequest)
 		return
 	}
-	errBD := h.oilConn.DeleteOilById(r.Context(), id)
+	errBD := h.storage.DeleteOilById(r.Context(), id)
 	if errBD != nil {
 		http.Error(w, "oil not found"+errBD.Error(), http.StatusNotFound)
 		return
@@ -107,7 +107,7 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 		Visc:  oilReq.Visc,
 		Price: oilReq.Price,
 	}
-	updOil, errBD := h.oilConn.FullUpdateOil(r.Context(), updateOil, id)
+	updOil, errBD := h.storage.FullUpdateOil(r.Context(), updateOil, id)
 	if errBD != nil {
 		if errors.Is(errBD, sql.ErrNoRows) {
 			http.Error(w, "oil not found", http.StatusNotFound)
@@ -161,7 +161,7 @@ func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "incorrect max price", http.StatusBadRequest)
 		return
 	}
-	oils, errBD := h.oilConn.GetMinMaxOil(r.Context(), min, max)
+	oils, errBD := h.storage.GetMinMaxOil(r.Context(), min, max)
 	if errBD != nil {
 		http.Error(w, "data base error!", http.StatusInternalServerError)
 		return
@@ -204,7 +204,7 @@ func (h *Handlers) GetByVisc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sortOil, err := h.oilConn.GetByVisc(r.Context(), visc)
+	sortOil, err := h.storage.GetByVisc(r.Context(), visc)
 	if err != nil {
 		http.Error(w, "oil not found!", http.StatusInternalServerError)
 		return
