@@ -36,6 +36,7 @@ func (s *OilService) DeleteOilById(ctx context.Context, id int) error {
 }
 
 func (s *OilService) FullUpdateOil(ctx context.Context, oil models.Oil, id int) (models.Oil, error) {
+
 	return s.oilRepo.FullUpdateOil(ctx, oil, id)
 }
 
@@ -51,4 +52,8 @@ func (s *OilService) GetByVisc(ctx context.Context, visc string) ([]models.Oil, 
 	}
 
 	return s.oilRepo.GetByVisc(ctx, visc)
+}
+
+func (s *OilService) GetAllOils(ctx context.Context) ([]models.Oil, error) {
+	return s.oilRepo.GetAllOils(ctx)
 }

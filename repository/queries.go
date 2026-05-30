@@ -3,6 +3,7 @@ package repository
 import (
 	"OilStore/models"
 	"context"
+	"database/sql"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -36,7 +37,13 @@ RETURNING id
 
 func (oc *OilConn) DeleteOilById(ctx context.Context, id int) error {
 	sQL := `DELETE FROM oils WHERE id=$1`
-	_, err := oc.conn.Exec(ctx, sQL, id)
+	delrows, err := oc.conn.Exec(ctx, sQL, id)
+	if err != nil {
+		return err
+	}
+	if delrows.RowsAffected() == 0 {
+		return sql.ErrNoRows
+	}
 	return err
 }
 
@@ -47,9 +54,7 @@ WHERE id=$4
 RETURNING id,name,visc,price
 `
 	var roil models.Oil
-
 	err := oc.conn.QueryRow(ctx, sQL, oil.Name, oil.Visc, oil.Price, id).Scan(&roil.Id, &roil.Name, &roil.Visc, &roil.Price)
-
 	return roil, err
 }
 
@@ -69,6 +74,15 @@ func (oc *OilConn) GetByVisc(ctx context.Context, visc string) ([]models.Oil, er
 	WHERE REPLACE
 	(LOWER(visc), '-', '') = REPLACE(LOWER($1), '-', '')`
 	rows, err := oc.conn.Query(ctx, sQL, visc)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByName[models.Oil])
+}
+
+func (oc *OilConn) GetAllOils(ctx context.Context) ([]models.Oil, error) {
+	sQL := `SELECT * FROM oils`
+	rows, err := oc.conn.Query(ctx, sQL)
 	if err != nil {
 		return nil, err
 	}

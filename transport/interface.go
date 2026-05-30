@@ -11,4 +11,5 @@ type OilService interface {
 	FullUpdateOil(ctx context.Context, oil models.Oil, id int) (models.Oil, error)
 	GetMinMaxOil(ctx context.Context, min, max int) ([]models.Oil, error)
 	GetByVisc(ctx context.Context, visc string) ([]models.Oil, error)
+	GetAllOils(ctx context.Context) ([]models.Oil, error)
 }

@@ -69,10 +69,11 @@ func (h *Handlers) DeleteOilById(w http.ResponseWriter, r *http.Request) {
 	}
 	errBD := h.oilServ.DeleteOilById(r.Context(), id)
 	if errBD != nil {
-		http.Error(w, "oil not found"+errBD.Error(), http.StatusNotFound)
+		http.Error(w, "oil not found "+errBD.Error(), http.StatusNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
 	respMess := dto.OilMessageResp{
 		Id:      id,
 		Message: "Oil deleted successfully!",
@@ -231,4 +232,39 @@ func (h *Handlers) GetByVisc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+func (h *Handlers) GetAllOils(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
+		return
+	}
+
+	allOil, err := h.oilServ.GetAllOils(r.Context())
+	if err != nil {
+		http.Error(w, "oils not found!", http.StatusInternalServerError)
+		return
+	}
+
+	allOilList := dto.OilRespList{
+		Data:  make([]dto.OilResp, len(allOil)),
+		Count: len(allOil),
+	}
+
+	for i, oil := range allOil {
+		allOilList.Data[i] = dto.OilResp{
+			Id:    oil.Id,
+			Name:  oil.Name,
+			Visc:  oil.Visc,
+			Price: oil.Price,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	errJson := json.NewEncoder(w).Encode(allOilList)
+	if errJson != nil {
+		http.Error(w, "Failed to encode response data", http.StatusInternalServerError)
+		return
+	}
 }

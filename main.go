@@ -11,7 +11,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	conn, errCon := repository.ConnectionBD_oil(ctx)
+	conn, errCon := repository.ConnectionBD_oil(ctx) //создаем подключение к БД
 	if errCon != nil {
 		fmt.Println("Ошибка подключения к БД", errCon)
 		return
@@ -32,8 +32,9 @@ func main() {
 	mux.HandleFunc("POST /oils", handlers.AddOil)
 	mux.HandleFunc("DELETE /oils/{id}", handlers.DeleteOilById)
 	mux.HandleFunc("PATCH /oils/{id}", handlers.FullUpdateOil)
-	mux.HandleFunc("GET /oils", handlers.GetMinMaxOil)
+	mux.HandleFunc("GET /oils/price", handlers.GetMinMaxOil)
 	mux.HandleFunc("GET /oils/visc", handlers.GetByVisc)
+	mux.HandleFunc("GET /oils", handlers.GetAllOils)
 
 	errServer := http.ListenAndServe(":8080", mux)
 	if errServer != nil {
