@@ -1,6 +1,7 @@
 package main
 
 import (
+	"OilStore/rdb"
 	"OilStore/repository"
 	"OilStore/service"
 	"OilStore/transport"
@@ -10,6 +11,9 @@ import (
 )
 
 func main() {
+
+	rdb := rdb.RedisInit()
+	defer rdb.Close()
 	ctx := context.Background()
 	conn, errCon := repository.ConnectionBD_oil(ctx) //создаем подключение к БД
 	if errCon != nil {
@@ -19,7 +23,7 @@ func main() {
 	defer conn.Close(ctx)
 
 	oilRepo := repository.NewOilConn(conn)
-	oilServ := service.NewOilService(oilRepo)
+	oilServ := service.NewOilService(oilRepo, rdb)
 	handlers := transport.NewHandlers(oilServ)
 
 	mux := http.NewServeMux()
