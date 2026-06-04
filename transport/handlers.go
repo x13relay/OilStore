@@ -268,3 +268,37 @@ func (h *Handlers) GetAllOils(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (h *Handlers) GetOilById(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
+		return
+	}
+
+	idStr := r.PathValue("id")
+
+	id, errID := strconv.Atoi(idStr)
+	if errID != nil {
+		http.Error(w, "incorrect ID value!", http.StatusBadRequest)
+		return
+	}
+	resOil, errBD := h.oilServ.GetOilById(r.Context(), id)
+	if errBD != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	oilResp := dto.OilResp{
+		Id:    resOil.Id,
+		Name:  resOil.Name,
+		Visc:  resOil.Visc,
+		Price: resOil.Price,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	errJson := json.NewEncoder(w).Encode(oilResp)
+	if errJson != nil {
+		http.Error(w, "Json error!"+errJson.Error(), http.StatusInternalServerError)
+		return
+	}
+}

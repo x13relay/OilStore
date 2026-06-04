@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -24,6 +25,7 @@ func NewOilService(oilRepo OilRepository, rdb *redis.Client) *OilService {
 
 const (
 	oilsAllKey = "oils:all"
+	oilByIdPr  = "oils:"
 	cacheTTL   = 5 * time.Minute
 )
 
@@ -50,6 +52,7 @@ func (s *OilService) AddOil(ctx context.Context, oil models.Oil) (int, error) {
 
 func (s *OilService) DeleteOilById(ctx context.Context, id int) error {
 	s.redisCli.Del(ctx, oilsAllKey)
+	s.redisCli.Del(ctx, oilByIdPr+strconv.Itoa(id))
 	return s.oilRepo.DeleteOilById(ctx, id)
 }
 
@@ -58,6 +61,7 @@ func (s *OilService) FullUpdateOil(ctx context.Context, oil models.Oil, id int) 
 	retOil, err := s.oilRepo.FullUpdateOil(ctx, oil, id)
 	if err == nil {
 		s.redisCli.Del(ctx, oilsAllKey)
+		s.redisCli.Del(ctx, oilByIdPr+strconv.Itoa(id))
 		return retOil, err
 	}
 	return models.Oil{}, err
@@ -97,5 +101,25 @@ func (s *OilService) GetAllOils(ctx context.Context) ([]models.Oil, error) {
 	if err == nil {
 		s.redisCli.Set(ctx, oilsAllKey, redData, cacheTTL)
 	}
-	return oils, nil
+	return oils, err
+}
+
+func (s *OilService) GetOilById(ctx context.Context, id int) (models.Oil, error) {
+	redisKey := oilByIdPr + strconv.Itoa(id)
+	cached, err := s.redisCli.Get(ctx, redisKey).Result()
+	if err == nil {
+		var oil models.Oil
+		if err := json.Unmarshal([]byte(cached), &oil); err == nil {
+			return oil, err
+		}
+	}
+	oil, err := s.oilRepo.GetOilById(ctx, id)
+	if err != nil {
+		return models.Oil{}, err
+	}
+	reqData, err := json.Marshal(oil)
+	if err == nil {
+		s.redisCli.Set(ctx, redisKey, reqData, cacheTTL)
+	}
+	return oil, err
 }

@@ -88,3 +88,17 @@ func (oc *OilConn) GetAllOils(ctx context.Context) ([]models.Oil, error) {
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByName[models.Oil])
 }
+
+func (oc *OilConn) GetOilById(ctx context.Context, id int) (models.Oil, error) {
+	sQL := `SELECT id,name,visc,price
+FROM oils
+WHERE id=$1`
+
+	var newOil models.Oil
+	err := oc.conn.QueryRow(ctx, sQL, id).Scan(&newOil.Id, &newOil.Name, &newOil.Visc, &newOil.Price)
+	if err != nil {
+		return models.Oil{}, err
+	}
+	return newOil, err
+
+}

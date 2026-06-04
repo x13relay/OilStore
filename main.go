@@ -8,11 +8,15 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 func main() {
 
 	rdb := rdb.RedisInit()
+	fmt.Println("✅ Redis готов")
 	defer rdb.Close()
 	ctx := context.Background()
 	conn, errCon := repository.ConnectionBD_oil(ctx) //создаем подключение к БД
@@ -20,6 +24,7 @@ func main() {
 		fmt.Println("Ошибка подключения к БД", errCon)
 		return
 	}
+	fmt.Println("✅ PostgreSQL готов")
 	defer conn.Close(ctx)
 
 	oilRepo := repository.NewOilConn(conn)
@@ -32,18 +37,38 @@ func main() {
 		fmt.Println("Ошибка при создании таблицы в БД", errBD)
 		return
 	}
-	fmt.Println("БД готова. Сервер запущен. Жду запросы на :8080")
+
 	mux.HandleFunc("POST /oils", handlers.AddOil)
 	mux.HandleFunc("DELETE /oils/{id}", handlers.DeleteOilById)
 	mux.HandleFunc("PATCH /oils/{id}", handlers.FullUpdateOil)
 	mux.HandleFunc("GET /oils/price", handlers.GetMinMaxOil)
 	mux.HandleFunc("GET /oils/visc", handlers.GetByVisc)
 	mux.HandleFunc("GET /oils", handlers.GetAllOils)
+	mux.HandleFunc("GET /oils/{id}", handlers.GetOilById)
 
-	errServer := http.ListenAndServe(":8080", mux)
-	if errServer != nil {
-		fmt.Println("Ошибка сервера!", errServer)
-		return
+	ctxStop, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	oilSrv := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
 	}
 
+	go func() {
+		fmt.Println("✅ Сервер запущен. Жду запросы на :8080")
+		if errServer := oilSrv.ListenAndServe(); errServer != nil && errServer != http.ErrServerClosed {
+			fmt.Println("Server Error!", errServer)
+		}
+	}()
+
+	<-ctxStop.Done()
+	fmt.Println("🛑 Получен сигнал остановки. Завершаю работу приложения и сервера...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := oilSrv.Shutdown(shutdownCtx); err != nil {
+		fmt.Println("Ошибка остановки сервера...")
+	}
+	fmt.Println("⛔ Сервер завершил свою работу.")
 }
