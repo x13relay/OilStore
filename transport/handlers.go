@@ -268,3 +268,79 @@ func (h *Handlers) GetAllOils(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (h *Handlers) GetOilById(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
+		return
+	}
+
+	idStr := r.PathValue("id")
+
+	id, errID := strconv.Atoi(idStr)
+	if errID != nil {
+		http.Error(w, "incorrect ID value!", http.StatusBadRequest)
+		return
+	}
+	resOil, errBD := h.oilServ.GetOilById(r.Context(), id)
+	if errBD != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	oilResp := dto.OilResp{
+		Id:    resOil.Id,
+		Name:  resOil.Name,
+		Visc:  resOil.Visc,
+		Price: resOil.Price,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	errJson := json.NewEncoder(w).Encode(oilResp)
+	if errJson != nil {
+		http.Error(w, "Json error!"+errJson.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *Handlers) GetOilsAbovePrice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
+		return
+	}
+	priceStr := r.PathValue("price")
+	price, errPrice := strconv.Atoi(priceStr)
+	if errPrice != nil {
+		http.Error(w, "wrong price!", http.StatusBadRequest)
+		return
+	}
+
+	newOilsSlice, errService := h.oilServ.GetOilsAbovePrice(r.Context(), price)
+	if errService != nil {
+		http.Error(w, "error!"+errService.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	newOils := dto.OilRespList{
+		Data:  make([]dto.OilResp, len(newOilsSlice)),
+		Count: len(newOilsSlice),
+	}
+
+	for i, oil := range newOilsSlice {
+		newOils.Data[i] = dto.OilResp{
+			Id:    oil.Id,
+			Name:  oil.Name,
+			Visc:  oil.Visc,
+			Price: oil.Price,
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	errJson := json.NewEncoder(w).Encode(newOils)
+	if errJson != nil {
+		http.Error(w, "response error"+errJson.Error(), http.StatusInternalServerError)
+		return
+	}
+
+}

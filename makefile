@@ -3,10 +3,12 @@ export
 
 test_run:
 	go run main.go
-oilstore_start:
-	docker compose up -d oilstore
-oilstore_stop:
-	docker compose down oilstore
+test_run_race:
+	go run -race main.go
+oil_start:
+	docker compose up -d 
+oil_stop:
+	docker compose down 
 all_stop:
 	docker copmose down
 db_start:
@@ -20,3 +22,8 @@ db_start:
 db_stop:
 	docker stop postgres-dev || true
 	docker rm postgres-dev || true
+redis_start:
+	docker run -d --name redis-dev -p 6379:6379 redis:alpine
+redis_stop:
+	docker stop redis-dev || true
+	docker rm redis-dev || true
