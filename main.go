@@ -19,7 +19,7 @@ func main() {
 	fmt.Println("✅ Redis готов")
 	defer rdb.Close()
 	ctx := context.Background()
-	conn, errCon := repository.ConnectionBD_oil(ctx) //создаем подключение к БД
+	conn, errCon := repository.ConnectionDBPostgres(ctx)
 	if errCon != nil {
 		fmt.Println("Ошибка подключения к БД", errCon)
 		return
@@ -30,30 +30,20 @@ func main() {
 	oilRepo := repository.NewOilConn(conn)
 	oilServ := service.NewOilService(oilRepo, rdb)
 	handlers := transport.NewHandlers(oilServ)
+	router := transport.NewRouter(handlers)
 
-	mux := http.NewServeMux()
 	errBD := oilRepo.CreateTableOils(ctx)
 	if errBD != nil {
 		fmt.Println("Ошибка при создании таблицы в БД", errBD)
 		return
 	}
 
-	mux.HandleFunc("POST /oils", handlers.AddOil)
-	mux.HandleFunc("DELETE /oils/{id}", handlers.DeleteOilById)
-	mux.HandleFunc("PATCH /oils/{id}", handlers.FullUpdateOil)
-	mux.HandleFunc("GET /oils/price", handlers.GetMinMaxOil)
-	mux.HandleFunc("GET /oils/visc", handlers.GetByVisc)
-	mux.HandleFunc("GET /oils", handlers.GetAllOils)
-	mux.HandleFunc("GET /oils/pr/{price}", handlers.GetOilsAbovePrice)
-
-	mux.HandleFunc("GET /oils/{id}", handlers.GetOilById)
-
 	ctxStop, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	oilSrv := &http.Server{
 		Addr:    ":8080",
-		Handler: mux,
+		Handler: router,
 	}
 
 	go func() {
