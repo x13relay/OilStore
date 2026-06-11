@@ -44,6 +44,8 @@ func main() {
 	mux.HandleFunc("GET /oils/price", handlers.GetMinMaxOil)
 	mux.HandleFunc("GET /oils/visc", handlers.GetByVisc)
 	mux.HandleFunc("GET /oils", handlers.GetAllOils)
+	mux.HandleFunc("GET /oils/pr/{price}", handlers.GetOilsAbovePrice)
+
 	mux.HandleFunc("GET /oils/{id}", handlers.GetOilById)
 
 	ctxStop, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

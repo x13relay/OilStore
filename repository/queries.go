@@ -102,3 +102,15 @@ WHERE id=$1`
 	return newOil, err
 
 }
+
+func (oc *OilConn) GetOilsAbovePrice(ctx context.Context, price int) ([]models.Oil, error) {
+	sQl := ` SELECT id,name,visc,price
+		FROM oils 
+		WHERE price>$1`
+
+	rows, err := oc.conn.Query(ctx, sQl, price)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByName[models.Oil])
+}

@@ -3,6 +3,8 @@ export
 
 test_run:
 	go run main.go
+test_run_race:
+	go run -race main.go
 oil_start:
 	docker compose up -d 
 oil_stop:

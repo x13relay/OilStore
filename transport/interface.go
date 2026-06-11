@@ -13,4 +13,5 @@ type OilService interface {
 	GetByVisc(ctx context.Context, visc string) ([]models.Oil, error)
 	GetAllOils(ctx context.Context) ([]models.Oil, error)
 	GetOilById(ctx context.Context, id int) (models.Oil, error)
+	GetOilsAbovePrice(ctx context.Context, price int) ([]models.Oil, error)
 }

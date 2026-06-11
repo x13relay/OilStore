@@ -24,9 +24,10 @@ func NewOilService(oilRepo OilRepository, rdb *redis.Client) *OilService {
 }
 
 const (
-	oilsAllKey = "oils:all"
-	oilByIdPr  = "oils:"
-	cacheTTL   = 5 * time.Minute
+	oilsAllKey    = "oils:all"
+	oilByIdPr     = "oils:"
+	oilAbovePrice = "oils:abovePrice"
+	cacheTTL      = 5 * time.Minute
 )
 
 func (s *OilService) AddOil(ctx context.Context, oil models.Oil) (int, error) {
@@ -122,4 +123,27 @@ func (s *OilService) GetOilById(ctx context.Context, id int) (models.Oil, error)
 		s.redisCli.Set(ctx, redisKey, reqData, cacheTTL)
 	}
 	return oil, err
+}
+
+func (s *OilService) GetOilsAbovePrice(ctx context.Context, price int) ([]models.Oil, error) {
+	if price < 0 {
+		return nil, fmt.Errorf("price can not be low a 0 (zero)")
+	}
+	var newOils []models.Oil
+	cached, errRedis := s.redisCli.Get(ctx, oilAbovePrice).Result()
+	if errRedis == nil {
+		if errUnmarshalRedis := json.Unmarshal([]byte(cached), &newOils); errUnmarshalRedis != nil {
+			return nil, errUnmarshalRedis
+		}
+	}
+	oils, errOilsRepo := s.oilRepo.GetOilsAbovePrice(ctx, price)
+	if errOilsRepo != nil {
+		return nil, errOilsRepo
+	}
+	newOilsRep, errMarshal := json.Marshal(oils)
+	if errMarshal != nil {
+		return nil, errMarshal
+	}
+	s.redisCli.Set(ctx, oilAbovePrice, newOilsRep, cacheTTL)
+	return oils, nil
 }
