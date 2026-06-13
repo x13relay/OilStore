@@ -32,6 +32,9 @@ RETURNING id
 	var oId int
 
 	err := oc.conn.QueryRow(ctx, sQL, oil.Name, oil.Visc, oil.Price).Scan(&oId)
+	if err != nil {
+		return 0, err
+	}
 	return oId, err
 }
 

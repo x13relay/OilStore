@@ -2,6 +2,7 @@ package transport
 
 import (
 	dto "OilStore/DTO"
+	"OilStore/logger"
 	"OilStore/models"
 	"database/sql"
 	"encoding/json"
@@ -9,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+
+	"go.uber.org/zap"
 )
 
 type Handlers struct {
@@ -23,6 +26,7 @@ func NewHandlers(oilServ OilService) *Handlers {
 
 func (h *Handlers) AddOil(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		logger.Log.Warn("Wrong HTTP method!", zap.String("Method", r.Method))
 		http.Error(w, "Wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -30,6 +34,7 @@ func (h *Handlers) AddOil(w http.ResponseWriter, r *http.Request) {
 
 	errJson := json.NewDecoder(r.Body).Decode(&req)
 	if errJson != nil {
+		logger.Log.Error("Can't read request jSon body", zap.Error(errJson))
 		http.Error(w, "Can't read jSon body", http.StatusBadRequest)
 		return
 	}
@@ -51,11 +56,15 @@ func (h *Handlers) AddOil(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	errJsonResp := json.NewEncoder(w).Encode(response)
+	if errJsonResp != nil {
+		logger.Log.Error("Failed to encode JSON response", zap.Error(errJsonResp))
+	}
 }
 
 func (h *Handlers) DeleteOilById(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
+		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "Wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -64,26 +73,33 @@ func (h *Handlers) DeleteOilById(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		logger.Log.Error("incorrect ID value!", zap.String("id", idStr), zap.Error(err))
 		http.Error(w, "incorrect ID value!", http.StatusBadRequest)
 		return
 	}
+
 	errBD := h.oilServ.DeleteOilById(r.Context(), id)
 	if errBD != nil {
-		http.Error(w, "oil not found "+errBD.Error(), http.StatusNotFound)
+		http.Error(w, "oil not found ", http.StatusNotFound)
 		return
 	}
+
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	respMess := dto.OilMessageResp{
 		Id:      id,
 		Message: "Oil deleted successfully!",
 	}
-	json.NewEncoder(w).Encode(respMess)
+	errJsonResp := json.NewEncoder(w).Encode(respMess)
+	if errJsonResp != nil {
+		logger.Log.Error("Failed to encode JSON response", zap.Error(errJsonResp))
+	}
 
 }
 
 func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPatch {
+		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -92,13 +108,15 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id") //парсим айди
 	id, errId := strconv.Atoi(idStr)
 	if errId != nil {
+		logger.Log.Error("incorrect ID value!", zap.String("id", idStr), zap.Error(errId))
 		http.Error(w, "incorrect ID value!", http.StatusBadRequest)
 		return
 	}
 
 	errJson := json.NewDecoder(r.Body).Decode(&oilReq)
 	if errJson != nil {
-		http.Error(w, "Can't read jSon body"+errJson.Error(), http.StatusBadRequest)
+		logger.Log.Error("Can't read jSon body", zap.Error(errJson))
+		http.Error(w, "Can't read jSon body", http.StatusBadRequest)
 		return
 	}
 
@@ -112,7 +130,7 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(errBD, sql.ErrNoRows) {
 			http.Error(w, "oil not found", http.StatusNotFound)
 		} else {
-			http.Error(w, "Database write error: oil data not updated!"+errBD.Error(), http.StatusInternalServerError)
+			http.Error(w, "Database write error: oil data not updated!", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -125,9 +143,10 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	errJREQ := json.NewEncoder(w).Encode(oilResp)
-	if errJREQ != nil {
-		http.Error(w, "response error"+errJREQ.Error(), http.StatusInternalServerError)
+	errJsonResp := json.NewEncoder(w).Encode(oilResp)
+	if errJsonResp != nil {
+		logger.Log.Error("Failed to encode JSON response", zap.Error(errJsonResp))
+		http.Error(w, "Failed to encode JSON response", http.StatusInternalServerError)
 		return
 	}
 
@@ -135,6 +154,8 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		fmt.Println("!!! МЕТОД НЕ GET, КОД ВЫПОЛНЯЕТСЯ !!!")
+		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -145,19 +166,22 @@ func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 	qMax := query.Get("max")
 
 	if qMin == "" || qMax == "" {
-		http.Error(w, "incorrect minimum or maximum price", http.StatusBadRequest)
+		logger.Log.Error("minimum and maximum price can not be empty", zap.String("min", qMin), zap.String("max", qMax))
+		http.Error(w, " minimum and maximum price can not be empty", http.StatusBadRequest)
 		return
 	}
 
 	min, errMin := strconv.Atoi(qMin)
 
 	if errMin != nil {
+		logger.Log.Error("incorrect min price!", zap.Error(errMin), zap.String("min", qMin))
 		http.Error(w, "incorrect min price!", http.StatusBadRequest)
 		return
 	}
 
 	max, errMax := strconv.Atoi(qMax)
 	if errMax != nil {
+		logger.Log.Error("incorrect max price!", zap.Error(errMax), zap.String("max", qMax))
 		http.Error(w, "incorrect max price", http.StatusBadRequest)
 		return
 	}
@@ -184,14 +208,16 @@ func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	w.WriteHeader(http.StatusOK)
-	if errJsonEnc := json.NewEncoder(w).Encode(oilRespList); errJsonEnc != nil {
-		fmt.Println("Failed to encode response:", errJsonEnc)
+	if errJsonResp := json.NewEncoder(w).Encode(oilRespList); errJsonResp != nil {
+
+		logger.Log.Error("Failed to encode JSON response", zap.Error(errJsonResp))
 	}
 
 }
 
 func (h *Handlers) GetByVisc(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -200,7 +226,8 @@ func (h *Handlers) GetByVisc(w http.ResponseWriter, r *http.Request) {
 
 	visc := query.Get("visc")
 	if visc == "" {
-		http.Error(w, "empty viscosity!", http.StatusBadRequest)
+		logger.Log.Error("The field viscosity cannot be empty !")
+		http.Error(w, "The field viscosity cannot be empty !", http.StatusBadRequest)
 		return
 	}
 
@@ -226,9 +253,9 @@ func (h *Handlers) GetByVisc(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if errJson := json.NewEncoder(w).Encode(oilListResp); errJson != nil {
+	if errJsonResp := json.NewEncoder(w).Encode(oilListResp); errJsonResp != nil {
+		logger.Log.Error("Failed to encode response data", zap.Error(errJsonResp))
 		http.Error(w, "Failed to encode response data", http.StatusInternalServerError)
-		fmt.Println("Failed to encode response data")
 		return
 	}
 
@@ -236,6 +263,7 @@ func (h *Handlers) GetByVisc(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) GetAllOils(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -262,8 +290,9 @@ func (h *Handlers) GetAllOils(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	errJson := json.NewEncoder(w).Encode(allOilList)
-	if errJson != nil {
+	errJsonResp := json.NewEncoder(w).Encode(allOilList)
+	if errJsonResp != nil {
+		logger.Log.Error("Failed to encode response data", zap.Error(errJsonResp))
 		http.Error(w, "Failed to encode response data", http.StatusInternalServerError)
 		return
 	}
@@ -271,6 +300,7 @@ func (h *Handlers) GetAllOils(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) GetOilById(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -279,6 +309,7 @@ func (h *Handlers) GetOilById(w http.ResponseWriter, r *http.Request) {
 
 	id, errID := strconv.Atoi(idStr)
 	if errID != nil {
+		logger.Log.Error("incorrect ID value!", zap.String("id", idStr), zap.Error(errID))
 		http.Error(w, "incorrect ID value!", http.StatusBadRequest)
 		return
 	}
@@ -296,28 +327,31 @@ func (h *Handlers) GetOilById(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	errJson := json.NewEncoder(w).Encode(oilResp)
-	if errJson != nil {
-		http.Error(w, "Json error!"+errJson.Error(), http.StatusInternalServerError)
+	errJsonResp := json.NewEncoder(w).Encode(oilResp)
+	if errJsonResp != nil {
+		logger.Log.Error("Failed to encode response data", zap.Error(errJsonResp))
+		http.Error(w, "Failed to encode response data", http.StatusInternalServerError)
 		return
 	}
 }
 
 func (h *Handlers) GetOilsAbovePrice(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
 	priceStr := r.PathValue("price")
 	price, errPrice := strconv.Atoi(priceStr)
 	if errPrice != nil {
-		http.Error(w, "wrong price!", http.StatusBadRequest)
+		logger.Log.Error("Wrong price value!", zap.String("price", priceStr), zap.Error(errPrice))
+		http.Error(w, "Wrong price value!", http.StatusBadRequest)
 		return
 	}
 
 	newOilsSlice, errService := h.oilServ.GetOilsAbovePrice(r.Context(), price)
 	if errService != nil {
-		http.Error(w, "error!"+errService.Error(), http.StatusInternalServerError)
+		http.Error(w, "error!", http.StatusInternalServerError)
 		return
 	}
 
@@ -337,9 +371,10 @@ func (h *Handlers) GetOilsAbovePrice(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	errJson := json.NewEncoder(w).Encode(newOils)
-	if errJson != nil {
-		http.Error(w, "response error"+errJson.Error(), http.StatusInternalServerError)
+	errJsonResp := json.NewEncoder(w).Encode(newOils)
+	if errJsonResp != nil {
+		logger.Log.Error("Failed to encode response data", zap.Error(errJsonResp))
+		http.Error(w, "Failed to encode response data", http.StatusInternalServerError)
 		return
 	}
 
