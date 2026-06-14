@@ -35,7 +35,9 @@ func main() {
 	oilRepo := repository.NewOilConn(conn)
 	oilServ := service.NewOilService(oilRepo, rdb)
 	handlers := transport.NewHandlers(oilServ)
-	router := transport.NewRouter(handlers)
+
+	rtr := transport.NewRouter(handlers)
+	router := logger.MiddlewareLog(rtr)
 
 	errBD := oilRepo.CreateTableOils(ctx)
 	if errBD != nil {
@@ -54,7 +56,7 @@ func main() {
 	go func() {
 		logger.Log.Info("✅ Сервер запущен. Жду запросы на :8080")
 		if errServer := oilSrv.ListenAndServe(); errServer != nil && errServer != http.ErrServerClosed {
-			logger.Log.Error("❌ Server Error!", zap.Error(errServer))
+			logger.Log.Error("Server Error!", zap.Error(errServer))
 		}
 	}()
 

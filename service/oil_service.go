@@ -110,6 +110,9 @@ func (s *OilService) GetMinMaxOil(ctx context.Context, min, max int) ([]models.O
 		logger.Log.Error("DB error! oils was not reiceved from DB", zap.Error(errRep))
 		return nil, errRep
 	}
+	if len(oils) == 0 {
+
+	}
 	logger.Log.Info("Successfully fetched oil data from the database", zap.Int("count", len(oils)))
 	return oils, nil
 

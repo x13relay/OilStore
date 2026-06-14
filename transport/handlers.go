@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -26,7 +25,6 @@ func NewHandlers(oilServ OilService) *Handlers {
 
 func (h *Handlers) AddOil(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		logger.Log.Warn("Wrong HTTP method!", zap.String("Method", r.Method))
 		http.Error(w, "Wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -64,7 +62,6 @@ func (h *Handlers) AddOil(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) DeleteOilById(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
-		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "Wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -99,7 +96,6 @@ func (h *Handlers) DeleteOilById(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPatch {
-		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -154,8 +150,6 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		fmt.Println("!!! МЕТОД НЕ GET, КОД ВЫПОЛНЯЕТСЯ !!!")
-		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -206,7 +200,6 @@ func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-
 	w.WriteHeader(http.StatusOK)
 	if errJsonResp := json.NewEncoder(w).Encode(oilRespList); errJsonResp != nil {
 
@@ -217,7 +210,6 @@ func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) GetByVisc(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -263,7 +255,6 @@ func (h *Handlers) GetByVisc(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) GetAllOils(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -300,7 +291,6 @@ func (h *Handlers) GetAllOils(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) GetOilById(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
@@ -337,7 +327,6 @@ func (h *Handlers) GetOilById(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) GetOilsAbovePrice(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		logger.Log.Warn("Wrong HTTP method!", zap.String("method", r.Method))
 		http.Error(w, "wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}

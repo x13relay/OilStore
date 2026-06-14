@@ -16,3 +16,7 @@ type OilMessageResp struct {
 	Id      int    `json:"id"`
 	Message string `json:"message"`
 }
+
+type MsgResp struct {
+	Msg string `json:"msg"`
+}
