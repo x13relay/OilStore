@@ -27,3 +27,6 @@ redis_start:
 redis_stop:
 	docker stop redis-dev || true
 	docker rm redis-dev || true
+migrate_create:
+	migrate create -ext sql -dir migrations -seq init_oilstore
+
