@@ -1,4 +1,4 @@
-`
+
 CREATE TABLE IF NOT EXISTS oils 
 (
 id SERIAL PRIMARY KEY,
@@ -6,4 +6,3 @@ name VARCHAR (100) NOT NULL,
 visc VARCHAR (100) NOT NULL,
 price INTEGER NOT NULL
 );
-`

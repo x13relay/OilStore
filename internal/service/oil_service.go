@@ -1,8 +1,9 @@
 package service
 
 import (
-	"OilStore/logger"
-	"OilStore/models"
+	"OilStore/internal/logger"
+	"OilStore/internal/models"
+	service "OilStore/internal/repository"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,13 +14,13 @@ import (
 	"go.uber.org/zap"
 )
 
-type OilService struct {
-	oilRepo  OilRepository
+type oilService struct {
+	oilRepo  service.OilRepository
 	redisCli *redis.Client
 }
 
-func NewOilService(oilRepo OilRepository, rdb *redis.Client) *OilService {
-	return &OilService{
+func NewOilService(oilRepo service.OilRepository, rdb *redis.Client) *oilService {
+	return &oilService{
 		oilRepo:  oilRepo,
 		redisCli: rdb,
 	}
@@ -32,14 +33,15 @@ const (
 	cacheTTL      = 5 * time.Minute
 )
 
-func (s *OilService) invalidatePrefix(ctx context.Context, prefix string) {
+func (s *oilService) invalidatePrefix(ctx context.Context, prefix string) {
 	iter := s.redisCli.Scan(ctx, 0, prefix+"*", 100).Iterator()
 	for iter.Next(ctx) {
 		s.redisCli.Del(ctx, iter.Val())
+
 	}
 }
 
-func (s *OilService) AddOil(ctx context.Context, oil models.Oil) (int, error) {
+func (s *oilService) AddOil(ctx context.Context, oil models.Oil) (int, error) {
 	if oil.Name == "" {
 		logger.Log.Warn("Oil name can not be empty")
 		return 0, fmt.Errorf("name can not be empty")
@@ -72,7 +74,7 @@ func (s *OilService) AddOil(ctx context.Context, oil models.Oil) (int, error) {
 
 }
 
-func (s *OilService) DeleteOilById(ctx context.Context, id int) error {
+func (s *oilService) DeleteOilById(ctx context.Context, id int) error {
 	err := s.oilRepo.DeleteOilById(ctx, id)
 	if err != nil {
 		logger.Log.Error("DB error! Oil was not deleted from DB", zap.Int("id", id), zap.Error(err))
@@ -85,7 +87,7 @@ func (s *OilService) DeleteOilById(ctx context.Context, id int) error {
 	return nil
 }
 
-func (s *OilService) FullUpdateOil(ctx context.Context, oil models.Oil, id int) (models.Oil, error) {
+func (s *oilService) FullUpdateOil(ctx context.Context, oil models.Oil, id int) (models.Oil, error) {
 
 	retOil, err := s.oilRepo.FullUpdateOil(ctx, oil, id)
 	if err == nil {
@@ -99,7 +101,7 @@ func (s *OilService) FullUpdateOil(ctx context.Context, oil models.Oil, id int) 
 	return models.Oil{}, err
 }
 
-func (s *OilService) GetMinMaxOil(ctx context.Context, min, max int) ([]models.Oil, error) {
+func (s *oilService) GetMinMaxOil(ctx context.Context, min, max int) ([]models.Oil, error) {
 	if min < 0 {
 		logger.Log.Warn("Minimum price can not be <0", zap.Int("min", min))
 		return nil, fmt.Errorf("minimum price can not be <0")
@@ -117,7 +119,7 @@ func (s *OilService) GetMinMaxOil(ctx context.Context, min, max int) ([]models.O
 	return oils, nil
 
 }
-func (s *OilService) GetByVisc(ctx context.Context, visc string) ([]models.Oil, error) {
+func (s *oilService) GetByVisc(ctx context.Context, visc string) ([]models.Oil, error) {
 	if visc == "" {
 		logger.Log.Warn("Visc can not be empty!", zap.String("visc", visc))
 		return nil, fmt.Errorf("visc can not be empty")
@@ -133,7 +135,7 @@ func (s *OilService) GetByVisc(ctx context.Context, visc string) ([]models.Oil, 
 
 }
 
-func (s *OilService) GetAllOils(ctx context.Context) ([]models.Oil, error) {
+func (s *oilService) GetAllOils(ctx context.Context) ([]models.Oil, error) {
 
 	cached, err := s.redisCli.Get(ctx, oilsAllKey).Result()
 	if err == nil {
@@ -164,7 +166,7 @@ func (s *OilService) GetAllOils(ctx context.Context) ([]models.Oil, error) {
 	return oils, err
 }
 
-func (s *OilService) GetOilById(ctx context.Context, id int) (models.Oil, error) {
+func (s *oilService) GetOilById(ctx context.Context, id int) (models.Oil, error) {
 	redisKey := oilByIdPr + strconv.Itoa(id)
 	cached, err := s.redisCli.Get(ctx, redisKey).Result()
 	if err == nil {
@@ -188,7 +190,7 @@ func (s *OilService) GetOilById(ctx context.Context, id int) (models.Oil, error)
 	return oil, err
 }
 
-func (s *OilService) GetOilsAbovePrice(ctx context.Context, price int) ([]models.Oil, error) {
+func (s *oilService) GetOilsAbovePrice(ctx context.Context, price int) ([]models.Oil, error) {
 
 	redisKey := oilAbovePrice + strconv.Itoa(price)
 

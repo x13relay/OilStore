@@ -1,7 +1,7 @@
-package repository
+package postgres
 
 import (
-	"OilStore/models"
+	"OilStore/internal/models"
 	"context"
 	"database/sql"
 

@@ -1,11 +1,12 @@
 package main
 
 import (
-	"OilStore/logger"
-	"OilStore/rdb"
-	"OilStore/repository"
-	"OilStore/service"
-	"OilStore/transport"
+	"OilStore/internal/cache"
+	"OilStore/internal/config"
+	"OilStore/internal/logger"
+	"OilStore/internal/repository/postgres"
+	"OilStore/internal/service"
+	"OilStore/internal/transport"
 	"context"
 	"fmt"
 	"net/http"
@@ -17,22 +18,26 @@ import (
 )
 
 func main() {
-	logger.InitLogger()
+	cfg := config.ConfigInit()
+	logger.InitLogger(cfg.Loglvl, cfg.App_env)
 	defer logger.CloseLogger()
-	rdb := rdb.RedisInit()
+	rdb := cache.RedisInit(cfg.Redis_addr)
+
 	logger.Log.Info("✅ Redis готов")
 	defer rdb.Close()
 	ctx := context.Background()
-	conn, errCon := repository.ConnectionDBPostgres(ctx)
+
+	conn, errCon := postgres.ConnectionDBPostgres(ctx, cfg.Postgres_addr)
+
 	if errCon != nil {
-		logger.Log.Error("❌ Ошибка подключения к БД", zap.Error(errCon))
+		logger.Log.Error("Ошибка подключения к БД", zap.Error(errCon))
 		fmt.Println("Ошибка подключения к БД", errCon)
 		return
 	}
 	logger.Log.Info("✅ PostgreSQL готов")
 	defer conn.Close(ctx)
 
-	oilRepo := repository.NewOilConn(conn)
+	oilRepo := postgres.NewOilConn(conn)
 	oilServ := service.NewOilService(oilRepo, rdb)
 	handlers := transport.NewHandlers(oilServ)
 
