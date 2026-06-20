@@ -1,8 +1,7 @@
-package repository
+package postgres
 
 import (
 	"context"
-	"os"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -15,7 +14,6 @@ func NewOilConn(conn *pgx.Conn) *OilConn {
 	return &OilConn{conn: conn}
 }
 
-func ConnectionDBPostgres(ctx context.Context) (*pgx.Conn, error) {
-	conStr := os.Getenv("CONSTR")
+func ConnectionDBPostgres(ctx context.Context, conStr string) (*pgx.Conn, error) {
 	return pgx.Connect(ctx, conStr)
 }

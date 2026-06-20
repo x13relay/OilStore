@@ -2,7 +2,7 @@ include .env
 export
 
 test_run:
-	go run main.go
+	go run cmd/app/main.go
 test_run_race:
 	go run -race main.go
 oil_start:

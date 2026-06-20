@@ -1,9 +1,10 @@
 package transport
 
 import (
-	dto "OilStore/DTO"
-	"OilStore/logger"
-	"OilStore/models"
+	dto "OilStore/internal/dto"
+	"OilStore/internal/logger"
+	"OilStore/internal/models"
+	"OilStore/internal/service"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -14,10 +15,10 @@ import (
 )
 
 type Handlers struct {
-	oilServ OilService
+	oilServ service.OilService
 }
 
-func NewHandlers(oilServ OilService) *Handlers {
+func NewHandlers(oilServ service.OilService) *Handlers {
 	return &Handlers{
 		oilServ: oilServ,
 	}

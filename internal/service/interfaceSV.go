@@ -1,7 +1,7 @@
-package transport
+package service
 
 import (
-	"OilStore/models"
+	"OilStore/internal/models"
 	"context"
 )
 

@@ -20,11 +20,11 @@ func CloseLogger() {
 		_ = logFile.Close()
 	}
 }
-func InitLogger() {
-	env := os.Getenv("APP_ENV")
-	levelStr := os.Getenv("LOGLVL")
+func InitLogger(env, levelStr string) {
+	//env := os.Getenv("APP_ENV")
+	//levelStr := os.Getenv("LOGLVL")
 
-	logFile, errFile := os.OpenFile("logger/app.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	logFile, errFile := os.OpenFile("cmd/app/app.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if errFile != nil {
 		panic(errFile)
 	}

@@ -1,17 +1,15 @@
-package rdb
+package cache
 
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/redis/go-redis/v9"
 )
 
 var Client *redis.Client
 
-func RedisInit() *redis.Client {
-	addr := os.Getenv("REDIS_ADDR")
+func RedisInit(addr string) *redis.Client {
 	if addr == "" {
 		fmt.Println("empty", addr)
 	}

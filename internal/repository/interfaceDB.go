@@ -1,7 +1,7 @@
-package service
+package repository
 
 import (
-	"OilStore/models"
+	"OilStore/internal/models"
 	"context"
 )
 
