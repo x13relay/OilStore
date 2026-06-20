@@ -1,10 +1,9 @@
 package transport
 
 import (
+	"OilStore/internal/domain"
 	dto "OilStore/internal/dto"
 	"OilStore/internal/logger"
-	"OilStore/internal/models"
-	"OilStore/internal/service"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -15,10 +14,10 @@ import (
 )
 
 type Handlers struct {
-	oilServ service.OilService
+	oilServ OilService
 }
 
-func NewHandlers(oilServ service.OilService) *Handlers {
+func NewHandlers(oilServ OilService) *Handlers {
 	return &Handlers{
 		oilServ: oilServ,
 	}
@@ -29,21 +28,16 @@ func (h *Handlers) AddOil(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Wrong HTTP method!", http.StatusMethodNotAllowed)
 		return
 	}
-	var req dto.AddOilReq
+	var oilDomain domain.AddOilDomain
 
-	errJson := json.NewDecoder(r.Body).Decode(&req)
+	errJson := json.NewDecoder(r.Body).Decode(&oilDomain)
 	if errJson != nil {
 		logger.Log.Error("Can't read request jSon body", zap.Error(errJson))
 		http.Error(w, "Can't read jSon body", http.StatusBadRequest)
 		return
 	}
-	newOil := models.Oil{
-		Name:  req.Name,
-		Visc:  req.Visc,
-		Price: req.Price,
-	}
 
-	id, errDB := h.oilServ.AddOil(r.Context(), newOil)
+	id, errDB := h.oilServ.AddOil(r.Context(), oilDomain)
 	if errDB != nil {
 		http.Error(w, "Fail to write DB", http.StatusInternalServerError)
 		return
@@ -102,7 +96,7 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 	}
 	var oilReq dto.FullUpdateOilReq
 
-	idStr := r.PathValue("id") //парсим айди
+	idStr := r.PathValue("id")
 	id, errId := strconv.Atoi(idStr)
 	if errId != nil {
 		logger.Log.Error("incorrect ID value!", zap.String("id", idStr), zap.Error(errId))
@@ -117,7 +111,7 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updateOil := models.Oil{
+	updateOil := domain.OilDomain{
 		Name:  oilReq.Name,
 		Visc:  oilReq.Visc,
 		Price: oilReq.Price,
@@ -126,6 +120,7 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 	if errBD != nil {
 		if errors.Is(errBD, sql.ErrNoRows) {
 			http.Error(w, "oil not found", http.StatusNotFound)
+			return
 		} else {
 			http.Error(w, "Database write error: oil data not updated!", http.StatusInternalServerError)
 			return
@@ -138,6 +133,7 @@ func (h *Handlers) FullUpdateOil(w http.ResponseWriter, r *http.Request) {
 		Visc:  updOil.Visc,
 		Price: updOil.Price,
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	errJsonResp := json.NewEncoder(w).Encode(oilResp)
@@ -180,6 +176,7 @@ func (h *Handlers) GetMinMaxOil(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "incorrect max price", http.StatusBadRequest)
 		return
 	}
+
 	oils, errBD := h.oilServ.GetMinMaxOil(r.Context(), min, max)
 	if errBD != nil {
 		http.Error(w, "data base error!", http.StatusInternalServerError)
