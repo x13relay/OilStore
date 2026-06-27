@@ -1,7 +1,6 @@
 package service
 
 import (
-	"OilStore/internal/cache"
 	"OilStore/internal/domain"
 	"OilStore/internal/logger"
 	"OilStore/internal/models"
@@ -28,25 +27,16 @@ func NewOilService(oilRepo OilRepository, rdb *redis.Client) *OilService {
 }
 
 const (
+	//1.храним полные данные масла в json
 	oilDataKeyPr = "oils:data:"
-	oilsListAll  = "oils:list:all"
-	oilFilterTTL = 5 * time.Minute
-	oilDataTTL   = 24 * time.Hour
-
-	oilsAllKey    = "oils:all"
-	oilByIdPr     = "oils:"
-	oilAbovePrice = "oils:price:above:"
-	fullCache     = "oils:*"
-	cacheTTL      = 5 * time.Minute
+	//2. Кэш списков и фильтров. Храним только слайсы айдишников.
+	oilsListAll     = "oils:list:all"
+	oilsViscKeyPr   = "oils:list:visc:"
+	oilsMinMaxKeyPr = "oils:list:price:range:"
+	oilsAbovePrice  = "oils:price:above:"
+	oilFilterTTL    = 5 * time.Minute
+	oilDataTTL      = 24 * time.Hour
 )
-
-func (s *OilService) invalidatePrefix(ctx context.Context, prefix string) {
-	iter := s.redisCli.Scan(ctx, 0, prefix+"*", 100).Iterator()
-	for iter.Next(ctx) {
-		s.redisCli.Del(ctx, iter.Val())
-
-	}
-}
 
 func (s *OilService) AddOil(ctx context.Context, oil domain.AddOilDomain) (int, error) {
 	if oil.Name == "" {
@@ -81,10 +71,6 @@ func (s *OilService) AddOil(ctx context.Context, oil domain.AddOilDomain) (int, 
 		zap.String("visc", oil.Visc),
 		zap.Int("price", oil.Price))
 
-	errDelFullCache := cache.DeleteAllCache(ctx, fullCache)
-	if errDelFullCache != nil {
-		logger.Log.Error("full cache delete error", zap.Error(errDelFullCache))
-	}
 	return id, err
 
 }
@@ -96,9 +82,8 @@ func (s *OilService) DeleteOilById(ctx context.Context, id int) error {
 		return err
 	}
 	logger.Log.Info("Success: oil was deleted from DB", zap.Int("id", id))
-	s.redisCli.Del(ctx, oilsAllKey)
-	s.redisCli.Del(ctx, oilByIdPr+strconv.Itoa(id))
-	s.invalidatePrefix(ctx, "oils:price:above:")
+	s.redisCli.Del(ctx, oilDataKeyPr+strconv.Itoa(id))
+	logger.Log.Info("oil was success deleted from redis.", zap.Int("ID", id))
 	return nil
 }
 
@@ -111,10 +96,9 @@ func (s *OilService) FullUpdateOil(ctx context.Context, oil domain.OilDomain, id
 	}
 	retOil, err := s.oilRepo.FullUpdateOil(ctx, oilDB, id)
 	if err == nil {
-		s.redisCli.Del(ctx, oilsAllKey)
-		s.redisCli.Del(ctx, oilByIdPr+strconv.Itoa(id))
-		s.invalidatePrefix(ctx, "oils:price:above:")
 		logger.Log.Info("Oil was successfully updated! ", zap.Int("id", retOil.Id), zap.String("name", retOil.Name))
+		s.redisCli.Del(ctx, oilDataKeyPr+strconv.Itoa(id))
+		logger.Log.Info("updated oil was success deleted from Redis", zap.Int("ID", id))
 
 		oilSV := domain.OilDomain{
 			Id:    retOil.Id,
@@ -134,57 +118,178 @@ func (s *OilService) GetMinMaxOil(ctx context.Context, min, max int) ([]domain.O
 		return nil, fmt.Errorf("minimum price can not be <0")
 	}
 
-	oils, errRep := s.oilRepo.GetMinMaxOil(ctx, min, max)
+	dinamicRedisKey := oilsMinMaxKeyPr + strconv.Itoa(min) + "-" + strconv.Itoa(max)
 
-	oilsSV := make([]domain.OilDomain, len(oils))
+	cachedOil, errCachedOil := s.redisCli.Get(ctx, dinamicRedisKey).Result()
+	var oilIDs []int
+	if errCachedOil == nil {
 
-	for i, v := range oils {
-		oilsSV[i] = domain.OilDomain{
-			Id:    v.Id,
-			Name:  v.Name,
-			Visc:  v.Visc,
-			Price: v.Price,
+		errJsonUnmarshal := json.Unmarshal([]byte(cachedOil), &oilIDs)
+		if errJsonUnmarshal != nil {
+			logger.Log.Error("error unmarshal slice of IDs", zap.Error(errJsonUnmarshal))
+		}
+	}
+	if len(oilIDs) == 0 || errCachedOil == redis.Nil {
+		oilsDB, errDB := s.oilRepo.GetMinMaxOil(ctx, min, max)
+		if errDB != nil {
+			logger.Log.Error("Database error", zap.Error(errDB))
+			return nil, errDB
+		}
+		if len(oilsDB) == 0 {
+			return []domain.OilDomain{}, nil
+		}
+		oilIDs = make([]int, len(oilsDB))
+
+		for i, v := range oilsDB {
+			oilIDs[i] = v.Id
+		}
+
+		sliceIDs, errIDs := json.Marshal(oilIDs)
+		if errIDs == nil {
+			s.redisCli.Set(ctx, dinamicRedisKey, sliceIDs, oilFilterTTL).Result()
+			logger.Log.Info("put IDs to Redis", zap.String("IDs", string(sliceIDs)))
+		} else {
+			logger.Log.Error("error marshal slice of IDs", zap.Error(errIDs))
 		}
 
 	}
 
-	if errRep != nil {
-		logger.Log.Error("DB error! oils was not reiceved from DB", zap.Error(errRep))
-		return nil, errRep
-	}
-	if len(oils) == 0 {
+	mgetKeys := make([]string, len(oilIDs))
 
+	for i, id := range oilIDs {
+		mgetKeys[i] = oilDataKeyPr + strconv.Itoa(id)
 	}
-	logger.Log.Info("Successfully fetched oil data from the database", zap.Int("count", len(oils)))
-	return oilsSV, nil
+	mgetSlice, errMget := s.redisCli.MGet(ctx, mgetKeys...).Result()
+	if errMget != nil {
+		logger.Log.Error("MGET error", zap.Error(errMget))
+	}
+	resultSlice := make([]domain.OilDomain, 0, len(oilIDs))
 
+	for i, item := range mgetSlice {
+		currentID := oilIDs[i]
+		if item != nil {
+			var oilReq domain.OilDomain
+			errUnmarshal := json.Unmarshal([]byte(item.(string)), &oilReq)
+			if errUnmarshal == nil {
+				resultSlice = append(resultSlice, oilReq)
+				continue
+			}
+			logger.Log.Warn("Failed to unmarshal single oil data from Redis", zap.Error(errUnmarshal))
+
+		}
+		logger.Log.Info("single product cache miss. Get product from DB", zap.Int("ID", currentID))
+		oilDB, errDB := s.oilRepo.GetOilById(ctx, currentID)
+		if errDB != nil {
+			logger.Log.Error("error single product get from DB", zap.Error(errDB))
+			continue
+		}
+		oilSV := domain.OilDomain{
+			Id:    oilDB.Id,
+			Name:  oilDB.Name,
+			Visc:  oilDB.Visc,
+			Price: oilDB.Price,
+		}
+		resultSlice = append(resultSlice, oilSV)
+		oilData, errData := json.Marshal(oilSV)
+		if errData == nil {
+			individualKey := oilDataKeyPr + strconv.Itoa(currentID)
+			s.redisCli.Set(ctx, individualKey, oilData, oilDataTTL)
+			logger.Log.Info("put single product to Redis", zap.String("oil", string(oilData)))
+		} else {
+			logger.Log.Warn("error marchal oildata", zap.Error(errData))
+		}
+	}
+	logger.Log.Info("oils successfully fetched via two-lvl cache", zap.Int("count", len(resultSlice)))
+	return resultSlice, nil
 }
+
 func (s *OilService) GetByVisc(ctx context.Context, visc string) ([]domain.OilDomain, error) {
 	if visc == "" {
 		logger.Log.Warn("Visc can not be empty!", zap.String("visc", visc))
 		return nil, fmt.Errorf("visc can not be empty")
 	}
+	dinamicRedisKey := oilsViscKeyPr + visc
 
-	oils, err := s.oilRepo.GetByVisc(ctx, visc)
-
-	if err != nil {
-		logger.Log.Error("DB error! oils was not founded in DB", zap.Error(err))
-		return nil, err
+	cachedVisc, errCachedVisc := s.redisCli.Get(ctx, dinamicRedisKey).Result()
+	var oilsIDs []int
+	if errCachedVisc == nil {
+		json.Unmarshal([]byte(cachedVisc), &oilsIDs)
 	}
 
-	oilsSV := make([]domain.OilDomain, len(oils))
+	if errCachedVisc == redis.Nil || len(oilsIDs) == 0 {
+		oilsDB, errDB := s.oilRepo.GetByVisc(ctx, visc)
+		if errDB != nil {
+			logger.Log.Error("DB error! oils was not founded in DB", zap.Error(errDB))
+			return nil, errDB
+		}
+		if len(oilsDB) == 0 {
+			return []domain.OilDomain{}, nil
+		}
 
-	for i, v := range oils {
-		oilsSV[i] = domain.OilDomain{
-			Id:    v.Id,
-			Name:  v.Name,
-			Visc:  v.Visc,
-			Price: v.Price,
+		oilsIDs = make([]int, len(oilsDB))
+
+		for i, v := range oilsDB {
+			oilsIDs[i] = v.Id
+		}
+
+		sliceIDs, errIDs := json.Marshal(oilsIDs)
+		if errIDs == nil {
+			s.redisCli.Set(ctx, dinamicRedisKey, sliceIDs, oilFilterTTL).Result()
+			logger.Log.Info("put IDs slice to Redis success", zap.String("ids", string(sliceIDs)))
+		} else {
+			logger.Log.Error("error marshal ids to slice", zap.Error(errIDs))
 		}
 	}
 
-	return oilsSV, err
+	mgetKeys := make([]string, len(oilsIDs))
 
+	for i, id := range oilsIDs {
+		mgetKeys[i] = oilDataKeyPr + strconv.Itoa(id)
+	}
+	mgetSlice, errorMget := s.redisCli.MGet(ctx, mgetKeys...).Result()
+	if errorMget != nil {
+		logger.Log.Error("MGET error", zap.Error(errorMget))
+	}
+	resultSlice := make([]domain.OilDomain, 0, len(oilsIDs))
+
+	for i, item := range mgetSlice {
+		currentId := oilsIDs[i]
+		if item != nil {
+			var oil domain.OilDomain
+			if err := json.Unmarshal([]byte(item.(string)), &oil); err == nil {
+				resultSlice = append(resultSlice, oil)
+				continue
+			}
+			logger.Log.Warn("Failed to unmarshal single oil data from Redis", zap.Int("id", currentId))
+		}
+
+		logger.Log.Info("single product cache miss, fetching row from DB", zap.Int("id", currentId))
+		DBoil, errDB := s.oilRepo.GetOilById(ctx, currentId)
+		if errDB != nil {
+			logger.Log.Error("DB error while fetching single oil", zap.Error(errDB))
+			continue
+		}
+
+		oilSV := domain.OilDomain{
+			Id:    DBoil.Id,
+			Name:  DBoil.Name,
+			Visc:  DBoil.Visc,
+			Price: DBoil.Price,
+		}
+		resultSlice = append(resultSlice, oilSV)
+		reqData, errMarshal := json.Marshal(oilSV)
+		if errMarshal == nil {
+			individualKey := oilDataKeyPr + strconv.Itoa(currentId)
+			s.redisCli.Set(ctx, individualKey, reqData, oilDataTTL)
+			logger.Log.Info("put single product row to Redis", zap.String("key", individualKey))
+		} else {
+			logger.Log.Warn("Failed to marshal single oil", zap.Error(errMarshal))
+		}
+
+	}
+
+	logger.Log.Info("oils successfully fetched via two-lvl cache", zap.Int("count", len(resultSlice)))
+	return resultSlice, nil
 }
 
 func (s *OilService) GetAllOils(ctx context.Context) ([]domain.OilDomain, error) {
@@ -192,13 +297,13 @@ func (s *OilService) GetAllOils(ctx context.Context) ([]domain.OilDomain, error)
 	cachedIDs, errCachedIDs := s.redisCli.Get(ctx, oilsListAll).Result()
 
 	if errCachedIDs == nil {
-		logger.Log.Info("Get lists of IDs from Redis", zap.String("key", oilsAllKey))
+		logger.Log.Info("Get lists of IDs from Redis", zap.String("key", oilsListAll))
 		_ = json.Unmarshal([]byte(cachedIDs), &oilIds)
 	} else if errCachedIDs != redis.Nil {
 		logger.Log.Warn("Redis unavaible, falling back to DB", zap.Error(errCachedIDs))
 	}
 
-	if errCachedIDs == redis.Nil || len(cachedIDs) == 0 {
+	if errCachedIDs == redis.Nil || len(oilIds) == 0 {
 		logger.Log.Info("cache miss for lists of IDs, fetching from postgres.")
 		oilsDB, errDB := s.oilRepo.GetAllOils(ctx)
 		if errDB != nil {
@@ -273,51 +378,10 @@ func (s *OilService) GetAllOils(ctx context.Context) ([]domain.OilDomain, error)
 	}
 	logger.Log.Info("oils successfully fetched via two-lvl cache", zap.Int("count", len(resultOils)))
 	return resultOils, nil
-	/*
-			cached, err := s.redisCli.Get(ctx, oilsAllKey).Result()
-			if err == nil {
-				var oils []domain.OilDomain
-				if err := json.Unmarshal([]byte(cached), &oils); err == nil {
-					return oils, nil
-				}
-
-				logger.Log.Warn("Failed to unmarshal cached oils, falling back to DB")
-			} else if err != redis.Nil {
-				logger.Log.Warn("Redis unavailble, falling back to DB", zap.Error(err))
-			}
-
-		oils, err := s.oilRepo.GetAllOils(ctx)
-
-		if err != nil {
-			logger.Log.Error("failed to fetch oils from DB", zap.Error(err))
-			return nil, err
-		}
-
-		oilsSV := make([]domain.OilDomain, len(oils))
-
-		for i, v := range oils {
-			oilsSV[i] = domain.OilDomain{
-				Id:    v.Id,
-				Name:  v.Name,
-				Visc:  v.Visc,
-				Price: v.Price,
-			}
-		}
-
-		redData, errMarshal := json.Marshal(oilsSV)
-		if errMarshal == nil {
-			s.redisCli.Set(ctx, oilsAllKey, redData, cacheTTL)
-			logger.Log.Debug("put data from postgres to Redis")
-		} else {
-			logger.Log.Warn("Failed to marshal slice for Redis", zap.Error(err))
-		}
-		logger.Log.Info("oils fetched", zap.Int("count", len(oils)))
-		return oilsSV, nil
-	*/
 }
 
 func (s *OilService) GetOilById(ctx context.Context, id int) (domain.OilDomain, error) {
-	redisKey := oilByIdPr + strconv.Itoa(id)
+	redisKey := oilDataKeyPr + strconv.Itoa(id)
 	cached, err := s.redisCli.Get(ctx, redisKey).Result()
 	if err == nil {
 		var cacheOil domain.OilDomain
@@ -327,75 +391,118 @@ func (s *OilService) GetOilById(ctx context.Context, id int) (domain.OilDomain, 
 		}
 	}
 
-	oil, err := s.oilRepo.GetOilById(ctx, id)
+	oilDB, errDB := s.oilRepo.GetOilById(ctx, id)
 
-	if err != nil {
-		logger.Log.Error("DB error!", zap.Int("id", id), zap.Error(err))
-		return domain.OilDomain{}, err
+	if errDB != nil {
+		logger.Log.Error("DB error!", zap.Int("id", id), zap.Error(errDB))
+		return domain.OilDomain{}, errDB
 	}
 	oilSV := domain.OilDomain{
-		Id:    oil.Id,
-		Name:  oil.Name,
-		Visc:  oil.Visc,
-		Price: oil.Price,
+		Id:    oilDB.Id,
+		Name:  oilDB.Name,
+		Visc:  oilDB.Visc,
+		Price: oilDB.Price,
 	}
 
 	reqData, err := json.Marshal(oilSV)
 	if err == nil {
 		logger.Log.Debug("Put data to Redis")
-		s.redisCli.Set(ctx, redisKey, reqData, cacheTTL)
+		s.redisCli.Set(ctx, redisKey, reqData, oilDataTTL)
 	}
-	logger.Log.Info("success get oil by id!", zap.Int("id", id))
+	logger.Log.Info("success get oil by id from DB", zap.Int("id", id))
 	return oilSV, err
 }
 
 func (s *OilService) GetOilsAbovePrice(ctx context.Context, price int) ([]domain.OilDomain, error) {
 
-	redisKey := oilAbovePrice + strconv.Itoa(price)
-
 	if price < 0 {
 		logger.Log.Warn("price can not be a lower, than 0", zap.Int("price", price))
 		return nil, fmt.Errorf("price can not be low a 0 (zero)")
 	}
+	var oilsIDs []int
 
-	cached, errRedis := s.redisCli.Get(ctx, redisKey).Result()
+	dynamicRedisKey := oilsAbovePrice + strconv.Itoa(price)
+
+	cached, errRedis := s.redisCli.Get(ctx, dynamicRedisKey).Result()
 	if errRedis == nil {
 		logger.Log.Debug("Get data from Redis")
-		var oilsSV []domain.OilDomain
-		if errUnmarshalRedis := json.Unmarshal([]byte(cached), &oilsSV); errUnmarshalRedis == nil {
-			return oilsSV, nil
+
+		_ = json.Unmarshal([]byte(cached), &oilsIDs)
+
+	}
+
+	if errRedis == redis.Nil || len(oilsIDs) == 0 {
+		logger.Log.Warn("miss cache IDs from radis. Get IDs from DB")
+		oilDB, errDB := s.oilRepo.GetOilsAbovePrice(ctx, price)
+		if errDB != nil {
+			logger.Log.Error("DB error", zap.Error(errDB))
+			return nil, errDB
 		}
-		logger.Log.Warn("Can not unmarshal data", zap.Error(errRedis))
 
-	} else if errRedis != redis.Nil {
-		logger.Log.Warn("redis unavaible", zap.Error(errRedis))
+		if len(oilDB) == 0 {
+			return []domain.OilDomain{}, nil
+		}
+
+		oilsIDs = make([]int, len(oilDB))
+
+		for i, v := range oilDB {
+			oilsIDs[i] = v.Id
+		}
+		sliceIDs, errIDs := json.Marshal(oilsIDs)
+		if errIDs == nil {
+			s.redisCli.Set(ctx, dynamicRedisKey, sliceIDs, oilFilterTTL)
+			logger.Log.Info("put IDs slice to Redis success", zap.String("key", dynamicRedisKey))
+
+		} else {
+			logger.Log.Error("error marshal IDs slice", zap.Error(errIDs))
+		}
+
 	}
 
-	oils, errOilsRepo := s.oilRepo.GetOilsAbovePrice(ctx, price)
-	if errOilsRepo != nil {
-		logger.Log.Error("DB error!", zap.Error(errOilsRepo))
-		return nil, errOilsRepo
+	mgetKeys := make([]string, len(oilsIDs))
+
+	for i, id := range oilsIDs {
+		mgetKeys[i] = oilDataKeyPr + strconv.Itoa(id)
 	}
+	sliceMget, errMget := s.redisCli.MGet(ctx, mgetKeys...).Result()
+	if errMget != nil {
+		logger.Log.Error("MGET error", zap.Error(errMget))
+	}
+	resultSlice := make([]domain.OilDomain, 0, len(oilsIDs))
 
-	oilsSV := make([]domain.OilDomain, len(oils))
+	for i, item := range sliceMget {
+		currentId := oilsIDs[i]
+		if item != nil {
+			var oil domain.OilDomain
+			if err := json.Unmarshal([]byte(item.(string)), &oil); err == nil {
+				resultSlice = append(resultSlice, oil)
+				continue
+			}
+			logger.Log.Warn("Failed to unmarshal single oil data from Redis", zap.Int("id", currentId))
+		}
+		logger.Log.Info("single product cache miss, fetching row from DB", zap.Int("id", currentId))
+		oilDB, errDB := s.oilRepo.GetOilById(ctx, currentId)
+		if errDB != nil {
+			logger.Log.Error("DB error while fetching single oil", zap.Error(errDB))
+			continue
+		}
 
-	for i, v := range oils {
-		oilsSV[i] = domain.OilDomain{
-			Id:    v.Id,
-			Name:  v.Name,
-			Visc:  v.Visc,
-			Price: v.Price,
+		oilSV := domain.OilDomain{
+			Id:    oilDB.Id,
+			Name:  oilDB.Name,
+			Visc:  oilDB.Visc,
+			Price: oilDB.Price,
+		}
+		resultSlice = append(resultSlice, oilSV)
+
+		reqData, errData := json.Marshal(oilSV)
+		if errData == nil {
+			individualKey := oilDataKeyPr + strconv.Itoa(currentId)
+			s.redisCli.Set(ctx, individualKey, reqData, oilDataTTL)
+			logger.Log.Info("put single product row to Redis", zap.String("key", individualKey))
+		} else {
+			logger.Log.Error("marshal error", zap.Error(errData))
 		}
 	}
-
-	newOilsRep, errMarshal := json.Marshal(oilsSV)
-	if errMarshal != nil {
-		logger.Log.Warn("Can't marshal data from DB", zap.Error(errMarshal))
-
-	} else {
-		s.redisCli.Set(ctx, redisKey, newOilsRep, cacheTTL)
-	}
-
-	logger.Log.Info("Success to get data from postgreSQL", zap.Int("price", price), zap.Int("count", len(oils)))
-	return oilsSV, nil
+	return resultSlice, nil
 }

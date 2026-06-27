@@ -3,6 +3,16 @@ export
 export PROJECT_ROOT=$(shell pwd)
 env_up:
 	docker compose up -d
+env_cleanup:
+	@read -p "Очистить все volumе файлы окружения? [y/N]: " ans;\
+	if ["$$ans"="y" ]; then \
+	docker compose down && \
+	rm -rf out/pgdata && \
+	echo "файлы и папки окружения удалены"; \
+	else \
+	echo "очистка окружения отменена"; \
+	fi
+
 test_run:
 	go run cmd/app/main.go
 test_run_race:
