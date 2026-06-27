@@ -14,7 +14,6 @@ func NewRouter(h *Handlers) http.Handler {
 	mux.HandleFunc("GET /oils/visc", h.GetByVisc)
 	mux.HandleFunc("GET /oils", h.GetAllOils)
 	mux.HandleFunc("GET /oils/pr/{price}", h.GetOilsAbovePrice)
-
 	mux.HandleFunc("GET /oils/{id}", h.GetOilById)
 
 	return mux
